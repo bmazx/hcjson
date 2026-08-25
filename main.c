@@ -1,10 +1,8 @@
 #include "hcjson.h"
 
-#define HCJSON_FALSE 0
-#define HCJSON_TRUE (!HCJSON_FALSE)
 
-int hcjson__whitespace(char c);
-int hcjson__is_digit(char c);
+bool hcjson__whitespace(char c);
+bool hcjson__is_digit(char c);
 void hcjson__token_buffer_expand(hcjson_token_buffer *tbuff);
 void hcjson__token_buffer_add(hcjson_token_buffer *tbuff, const hcjson_token_str tstr);
 hcjson_token_str hcjson__create_token_str(hcjson_token token, const char* str, size_t len);
@@ -13,110 +11,139 @@ hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t len);
 void hcjson__lex_json(hcjson_parser *ps);
 
 
-int hcjson__whitespace(char c) {
-    return (c == ' ' || c == '\n' || c == '\t' || c == '\r') ? HCJSON_TRUE : HCJSON_FALSE;
+bool hcjson__whitespace(char c) {
+    return (c == ' ' || c == '\n' || c == '\t' || c == '\r');
 }
 
-int hcjson__is_digit(char c) {
-    return (c >= '0' && c <= '9') ? HCJSON_TRUE : HCJSON_FALSE;
+bool hcjson__is_digit(char c) {
+    return (c >= '0' && c <= '9');
 }
 
 int hcjson__parse_number_str(const char* str, size_t len, hcjson *json) {
-    int found_dec, found_exp, neg;
-    double vald;
-    int64_t val64i;
-    uint64_t val64ui;
-    size_t i;
-
     HCJSON_ASSERT(str, "str cannot be null");
 
-    found_dec = HCJSON_FALSE;
-    found_exp = HCJSON_FALSE;
-    neg = HCJSON_FALSE;
+    int found_dec = false;
+    int found_exp = false;
+    int neg = false;
 
     /* check leading cases */
     if (!len) {
-        return HCJSON_FALSE;
+        return false;
     }
     if (!(str[0] == '-' || hcjson__is_digit(str[0]))) {
-        return HCJSON_FALSE;
+        return false;
     }
     if (len == 1 && str[0] == '-') {
-        return HCJSON_FALSE;
+        return false;
     }
     if (str[0] == '-') {
-        neg = HCJSON_TRUE;
+        neg = true;
     }
 
     /* check leading 0 cases */
     if (len > 1 && str[0] == '0') {
         if (hcjson__is_digit(str[1])) {
-            return HCJSON_FALSE;
+            return false;
         }
     }
     if (len > 2 && (str[1] == '0' && str[0] == '-')) {
         if (hcjson__is_digit(str[2])) {
-            return HCJSON_FALSE;
+            return false;
         }
     }
 
-    for (i = 1; i < len; i++) {
+    for (size_t i = 1; i < len; i++) {
         /* check fractional cases */
         if (str[i] == '.') {
             if (found_exp) {
-                return HCJSON_FALSE;
+                return false;
             }
             if (found_dec) {
-                return HCJSON_FALSE;
+                return false;
             }
-            found_dec = HCJSON_TRUE;
+            found_dec = true;
 
             /* check digit defined before and after decimal */
             if (!hcjson__is_digit(str[i-1]) || !(i < len-1 && hcjson__is_digit(str[i+1]))) {
-                return HCJSON_FALSE;
+                return false;
             }
         }
         else if (str[i] == 'e' || str[i] == 'E') {
             if (found_exp) {
-                return HCJSON_FALSE;
+                return false;
             }
-            found_exp = HCJSON_TRUE;
+            found_exp = true;
 
             /* check digit defined before and after exponent or +/- */
             if (!hcjson__is_digit(str[i-1])) {
-                return HCJSON_FALSE;
+                return false;
             }
             if (!(i < len-1 && (hcjson__is_digit(str[i+1]) || str[i+1] == '+' || str[i+1] == '-'))) {
-                return HCJSON_FALSE;
+                return false;
             }
         }
         else if (str[i] == '-' || str[i] == '+') {
             /* check exponent defined before and digit after +/- */
             if (str[i-1] != 'e' && str[i-1] != 'E') {
-                return HCJSON_FALSE;
+                return false;
             }
             if (!(i < len-1 && hcjson__is_digit(str[i+1]))) {
-                return HCJSON_FALSE;
+                return false;
             }
         }
         /* check if valid number */
         else if (!hcjson__is_digit(str[i])) {
-            return HCJSON_FALSE;
+            return false;
         }
     }
 
     if (!json) {
-        return HCJSON_TRUE;
+        return true;
     }
 
-    return HCJSON_TRUE;
+    char *buff, *end;
+    buff = (char*) hcjson__malloc(len + 1);
+    if (!buff) { return false; }
+    memcpy(buff, str, len);
+    buff[len] = '\0';
+
+    if (found_dec || found_exp) {
+        double val = strtod(buff, &end);
+        if (buff == end) {
+            hcjson__free(buff);
+            return false;
+        }
+        json->type = HCJSON_TYPE_NUMBER | HCJSON_TYPE_NUMBER_FLOAT;
+        json->value.floatv = val;
+    }
+    else if (neg) {
+        int64_t val = strtoll(buff, &end, 10);
+        if (buff == end) {
+            hcjson__free(buff);
+            return false;
+        }
+        json->type = HCJSON_TYPE_NUMBER | HCJSON_TYPE_NUMBER_INT;
+        json->value.intv = val;
+    }
+    else {
+        uint64_t val = strtoull(buff, &end, 10);
+        if (buff == end) {
+            hcjson__free(buff);
+            return false;
+        }
+        json->type = HCJSON_TYPE_NUMBER | HCJSON_TYPE_NUMBER_UINT;
+        json->value.uintv = val;
+    }
+
+    hcjson__free(buff);
+
+    return true;
 }
 
 void hcjson__token_buffer_expand(hcjson_token_buffer *tbuff) {
-    hcjson_token_str *temp;
     HCJSON_ASSERT(tbuff, "tbuff cannot be null");
     tbuff->capacity = tbuff->capacity ? (tbuff->capacity * HCJSON_TOKEN_BUFF_MULTIPLIER) : HCJSON_TOKEN_BUFF_SIZE;
-    temp = (hcjson_token_str*) hcjson__malloc(tbuff->capacity * sizeof(hcjson_token_str));
+    hcjson_token_str *temp = (hcjson_token_str*) hcjson__malloc(tbuff->capacity * sizeof(hcjson_token_str));
     memcpy(temp, tbuff->tokens, tbuff->size * sizeof(hcjson_token_str));
     hcjson__free(tbuff->tokens);
     tbuff->tokens = temp;
@@ -131,22 +158,23 @@ void hcjson__token_buffer_add(hcjson_token_buffer *tbuff, const hcjson_token_str
 }
 
 hcjson_token_str hcjson__create_token_str(hcjson_token token, const char* str, size_t len) {
-    hcjson_token_str tstr;
     HCJSON_ASSERT(str, "str cannot be null");
-    tstr.token = token;
-    tstr.str = str;
-    tstr.len = len;
-    return tstr;
+    return (hcjson_token_str){
+        .token = token,
+        .str = str,
+        .len = len,
+    };
 }
 
 hcjson_token_str hcjson__lex_value_str(hcjson_parser *ps, size_t *pos, size_t len) {
-    hcjson_token_str tstr;
-
     HCJSON_ASSERT(ps && pos, "ps and pos cannot be null");
 
-    tstr.token = HCJSON_TOKEN_STRING;
-    tstr.str = &ps->json[++(*pos)];
-    tstr.len = 0;
+    hcjson_token_str tstr = {
+        .token = HCJSON_TOKEN_STRING,
+        .str = &ps->json[++(*pos)],
+        .len = 0,
+    };
+
     while (ps->json[*pos] != '\"' && *pos < len) {
         (*pos)++;
         tstr.len++;
@@ -159,13 +187,14 @@ hcjson_token_str hcjson__lex_value_str(hcjson_parser *ps, size_t *pos, size_t le
 }
 
 hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t len) {
-    hcjson_token_str tstr;
-
     HCJSON_ASSERT(ps && pos, "ps and pos cannot be null");
 
-    tstr.token = HCJSON_TOKEN_INVALID;
-    tstr.str = &ps->json[*pos];
-    tstr.len = 0;
+    hcjson_token_str tstr = {
+        .token = HCJSON_TOKEN_INVALID,
+        .str = &ps->json[*pos],
+        .len = 0,
+    };
+
     while (ps->json[*pos] != ',' && !hcjson__whitespace(ps->json[*pos]) && *pos < len) {
         (*pos)++;
         tstr.len++;
@@ -188,12 +217,10 @@ hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t len) {
 }
 
 void hcjson__lex_json(hcjson_parser *ps) {
-    size_t pos, len;
-
     HCJSON_ASSERT(ps, "ps cannot be null");
 
-    pos = 0;
-    len = strlen(ps->json);
+    size_t pos = 0;
+    size_t len = strlen(ps->json);
 
     while (pos < len) {
         char c = ps->json[pos];
@@ -255,16 +282,14 @@ hcjson *hcjson__parse_json(hcjson_parser *ps) {
 }
 
 hcjson *hcjson_parse(const char* json) {
-    hcjson_parser ps;
-    int i;
-
     HCJSON_ASSERT(json, "json cannot be null");
 
-    memset(&ps, 0, sizeof(hcjson_parser));
+    hcjson_parser ps = {0};
+
     ps.json = json;
     hcjson__lex_json(&ps);
 
-    for (i = 0; i < ps.tbuff.size; i++) {
+    for (int i = 0; i < ps.tbuff.size; i++) {
         printf("%.*s\n", (int)ps.tbuff.tokens[i].len, ps.tbuff.tokens[i].str);
     }
 
@@ -296,6 +321,7 @@ char* loadFile(const char* filepath) {
 int main(int argc, char **argv) {
     char *file, *json;
     const char *str;
+    hcjson obj;
 
     file = loadFile("file.json");
 
@@ -487,4 +513,18 @@ int main(int argc, char **argv) {
 
     str = "10\n";
     printf("%s | %d\n", str, hcjson__parse_number_str(str, strlen(str), NULL));
+
+
+    str = "-1234123412341234";
+    printf("%s | %d\n", str, hcjson__parse_number_str(str, strlen(str), &obj));
+
+    if (obj.type & HCJSON_TYPE_NUMBER_FLOAT) {
+        printf("float: %lf\n", obj.value.floatv);
+    }
+    else if (obj.type & HCJSON_TYPE_NUMBER_INT) {
+        printf("int: %ld\n", obj.value.intv);
+    }
+    else if (obj.type & HCJSON_TYPE_NUMBER_UINT) {
+        printf("uint: %lu\n", obj.value.uintv);
+    }
 }

@@ -63,6 +63,7 @@ hcjson *hcjson_parse(const char* json);
 #ifdef HCJSON_IMPL
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -102,14 +103,14 @@ typedef struct hcjson_parser {
 } hcjson_parser;
 
 void *hcjson__malloc(size_t size);
-void *hcjson__free(void* ptr);
+void hcjson__free(void* ptr);
 char *hcjson__strdup(const char* str);
 
 void *hcjson__malloc(size_t size) {
     return HCJSON_MALLOC(size);
 }
 
-void *hcjson__free(void* ptr) {
+void hcjson__free(void* ptr) {
     HCJSON_FREE(ptr);
 }
 
