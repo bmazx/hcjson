@@ -24,9 +24,11 @@
 #define HCJSON_TYPE_ARRAY        (0x00000010)
 #define HCJSON_TYPE_OBJECT       (0x00000020)
 #define HCJSON_TYPE_NUMBER       (0x00000040)
-#define HCJSON_TYPE_NUMBER_INT   (0x00000080)
-#define HCJSON_TYPE_NUMBER_UINT  (0x00000100)
-#define HCJSON_TYPE_NUMBER_FLOAT (0x00000200)
+#define HCJSON_TAG_TRANSFERRED   (0x80000000)
+
+#define HCJSON_SUCCESS (0)
+#define HCJSON_ERROR_INVALID_TYPE (-1)
+#define HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED (-2)
 
 #define HCJSON_TOKEN_BUFF_SIZE (64)
 #define HCJSON_TOKEN_BUFF_MULTIPLIER (2)
@@ -38,14 +40,13 @@ typedef struct hcjson {
     struct hcjson *prev;
     struct hcjson *next;
     int32_t type;
-    char* name;
+    char* key;
     union {
-        struct hcjson *childv;
-        char *stringv;
-        int64_t intv;
-        uint64_t uintv;
-        double floatv;
+        struct hcjson *child;
+        char *str;
+        double num;
     } value;
+    struct hcjson *m_tail;
 } hcjson;
 
 
@@ -54,6 +55,21 @@ extern "C" {
 #endif
 
 hcjson *hcjson_parse(const char* json);
+
+hcjson *hcjson_create_object(void);
+hcjson *hcjson_create_array(void);
+hcjson *hcjson_create_true(void);
+hcjson *hcjson_create_false(void);
+hcjson *hcjson_create_null(void);
+hcjson *hcjson_create_string(const char *str);
+hcjson *hcjson_create_number(double num);
+
+void hcjson_destroy(hcjson *json);
+
+int32_t hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
+int32_t hcjson_add_item_to_array(hcjson *obj, const char *key, hcjson *item);
+
+char *hcjson_to_string(hcjson *json);
 
 #ifdef __cplusplus
 }
@@ -64,7 +80,6 @@ hcjson *hcjson_parse(const char* json);
 
 #include <assert.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -77,9 +92,9 @@ typedef enum hcjson_token {
     HCJSON_TOKEN_RBRACKET,
     HCJSON_TOKEN_COMMA,
     HCJSON_TOKEN_COLON,
-    HCJSON_TOKEN_NULL,
     HCJSON_TOKEN_TRUE,
     HCJSON_TOKEN_FALSE,
+    HCJSON_TOKEN_NULL,
     HCJSON_TOKEN_STRING,
     HCJSON_TOKEN_NUMBER
 } hcjson_token;
@@ -107,19 +122,19 @@ void hcjson__free(void* ptr);
 char *hcjson__strdup(const char* str);
 
 void *hcjson__malloc(size_t size) {
+    if (!size) { return NULL; }
     return HCJSON_MALLOC(size);
 }
 
 void hcjson__free(void* ptr) {
+    if (!ptr) { return; }
     HCJSON_FREE(ptr);
 }
 
 char *hcjson__strdup(const char* str) {
-    size_t length;
-    char *result;
     HCJSON_ASSERT(str, "str cannot be null");
-    length = strlen(str) + 1;
-    result = (char*) hcjson__malloc(length);
+    size_t length = strlen(str) + 1;
+    char *result = (char*) hcjson__malloc(length);
     if (!result) { return NULL; }
     memcpy(result, str, length);
     return result;
