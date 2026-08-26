@@ -24,6 +24,124 @@ void custom_free(void *ptr) {
 #include "hcjson.h"
 
 
+static bool          hcjson__is_list_json(hcjson *json);
+static hcjson_result hcjson__add_item_to_list_json(hcjson *json, const char *key, hcjson *item);
+static hcjson_result hcjson__remove_item_in_obj(hcjson *obj, const char *key, bool destroy, hcjson **ret);
+static hcjson_result hcjson__remove_item_in_arr(hcjson *arr, uint32_t index, bool destroy, hcjson **ret);
+
+static bool hcjson__is_list_json(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & (HCJSON_TYPE_OBJECT | HCJSON_TYPE_ARRAY);
+}
+
+static hcjson_result hcjson__add_item_to_list_json(hcjson *json, const char *key, hcjson *item) {
+    HCJSON_ASSERT(json && key && item, "obj, key, and item cannot be null");
+
+    if (!hcjson__is_list_json(json)) {
+        return HCJSON_ERROR_INVALID_TYPE;
+    }
+    if (item->type & HCJSON_TAG_TRANSFERRED) {
+        return HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED;
+    }
+
+    item->type |= HCJSON_TAG_TRANSFERRED;
+    item->next = NULL;
+    item->prev = NULL;
+
+    if (hcjson_is_object(json)) {
+        item->key = hcjson__strdup(key);
+    }
+
+    if (!json->value.child) {
+        json->value.child = item;
+        json->m_tail = item;
+        return HCJSON_SUCCESS;
+    }
+
+    json->m_tail->next = item;
+    item->prev = json->m_tail;
+    json->m_tail = item;
+
+    return HCJSON_SUCCESS;
+}
+
+static hcjson_result hcjson__remove_item_in_obj(hcjson *obj, const char *key, bool destroy, hcjson **ret) {
+    HCJSON_ASSERT(obj && key, "obj and key cannot be null");
+
+    if (!hcjson_is_object(obj)) {
+        return HCJSON_ERROR_INVALID_TYPE;
+    }
+
+    for (hcjson *ijs = obj->value.child; ijs; ijs = ijs->next) {
+        if (strcmp(ijs->key, key) == 0) {
+            hcjson *ijs_next = ijs->next;
+            hcjson *ijs_prev = ijs->prev;
+
+            if (ijs_next) { ijs_next->prev = ijs_prev; }
+            if (ijs_prev) { ijs_prev->next = ijs_next; }
+
+            if (ijs == obj->m_tail) {
+                if (ijs_prev) { obj->m_tail = ijs_prev; }
+                else { obj->m_tail = NULL; }
+            }
+
+            if (destroy) {
+                hcjson_destroy(ijs);
+            }
+
+            ijs->type &= ~HCJSON_TAG_TRANSFERRED;
+            if (ret) {
+                *ret = ijs;
+            }
+
+            return HCJSON_SUCCESS;
+        }
+    }
+
+    return HCJSON_ERROR_TASK_FAILED;
+}
+
+static hcjson_result hcjson__remove_item_in_arr(hcjson *arr, uint32_t index, bool destroy, hcjson **ret) {
+    HCJSON_ASSERT(arr, "arr cannot be null");
+
+    if (!hcjson_is_array(arr)) {
+        return HCJSON_ERROR_INVALID_TYPE;
+    }
+
+    uint32_t i = 0;
+    for (hcjson *ijs = arr->value.child; ijs; ijs = ijs->next) {
+        if (index == i) {
+            hcjson *ijs_next = ijs->next;
+            hcjson *ijs_prev = ijs->prev;
+
+            if (ijs_next) { ijs_next->prev = ijs_prev; }
+            if (ijs_prev) { ijs_prev->next = ijs_next; }
+
+            if (ijs == arr->m_tail) {
+                if (ijs_prev) { arr->m_tail = ijs_prev; }
+                else { arr->m_tail = NULL; }
+            }
+
+            if (destroy) {
+                hcjson_destroy(ijs);
+            }
+
+            ijs->type &= ~HCJSON_TAG_TRANSFERRED;
+            if (ret) {
+                *ret = ijs;
+            }
+
+            return HCJSON_SUCCESS;
+        }
+        i++;
+        if (i > index) {
+            break;
+        }
+    }
+
+    return HCJSON_ERROR_TASK_FAILED;
+}
+
 hcjson *hcjson_create_object(void) {
     hcjson *json_obj = (hcjson*) hcjson__malloc(sizeof(hcjson));
     if (!json_obj) { return NULL; }
@@ -104,60 +222,149 @@ void hcjson_destroy(hcjson *json) {
     hcjson__free(json);
 }
 
-int32_t hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item) {
-    HCJSON_ASSERT(obj && key && item, "obj, key, and item cannot be null");
-
-    if (!(obj->type & HCJSON_TYPE_OBJECT)) {
-        return HCJSON_ERROR_INVALID_TYPE;
-    }
-    if (item->type & HCJSON_TAG_TRANSFERRED) {
-        return HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED;
-    }
-
-    item->key = hcjson__strdup(key);
-    item->type |= HCJSON_TAG_TRANSFERRED;
-    item->next = NULL;
-    item->prev = NULL;
-
-    if (!obj->value.child) {
-        obj->value.child = item;
-        obj->m_tail = item;
-        return HCJSON_SUCCESS;
-    }
-
-    obj->m_tail->next = item;
-    item->prev = obj->m_tail;
-    obj->m_tail = item;
-
-    return HCJSON_SUCCESS;
+bool hcjson_is_object(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_OBJECT;
 }
 
-int32_t hcjson_add_item_to_array(hcjson *obj, const char *key, hcjson *item) {
+bool hcjson_is_array(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_ARRAY;
+}
+
+bool hcjson_is_true(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_TRUE;
+}
+
+bool hcjson_is_false(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_FALSE;
+}
+
+bool hcjson_is_null(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_NULL;
+}
+
+bool hcjson_is_string(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_STRING;
+}
+
+bool hcjson_is_number(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    return json->type & HCJSON_TYPE_NUMBER;
+}
+
+hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item) {
     HCJSON_ASSERT(obj && key && item, "obj, key, and item cannot be null");
+    return hcjson__add_item_to_list_json(obj, key, item);
+}
 
-    if (!(obj->type & HCJSON_TYPE_ARRAY)) {
-        return HCJSON_ERROR_INVALID_TYPE;
+hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item) {
+    HCJSON_ASSERT(obj && key && item, "obj, key, and item cannot be null");
+    if (!hcjson_is_object(obj)) { return HCJSON_ERROR_INVALID_TYPE; }
+    hcjson *copy = hcjson__malloc(sizeof(hcjson));
+    if (!copy) { return HCJSON_ERROR_MALLOC_FAILURE; }
+    memcpy(copy, item, sizeof(hcjson));
+    copy->type &= ~HCJSON_TAG_TRANSFERRED;
+    return hcjson_add_item_to_object(obj, key, copy);
+}
+
+hcjson_result hcjson_destroy_item_in_object(hcjson *obj, const char *key) {
+    HCJSON_ASSERT(obj && key, "obj and key cannot be null");
+    return hcjson__remove_item_in_obj(obj, key, true, NULL);
+}
+
+hcjson *hcjson_remove_item_in_object(hcjson *obj, const char *key) {
+    HCJSON_ASSERT(obj && key, "obj and key cannot be null");
+    hcjson *ret = NULL;
+    if (hcjson__remove_item_in_obj(obj, key, false, &ret) != HCJSON_SUCCESS) {
+        return NULL;
     }
-    if (item->type & HCJSON_TAG_TRANSFERRED) {
-        return HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED;
+    return ret;
+}
+
+hcjson *hcjson_get_item_in_object(hcjson *obj, const char *key) {
+    HCJSON_ASSERT(obj && key, "obj and key cannot be null");
+
+    if (!hcjson_is_object(obj)) {
+        return NULL;
     }
 
-    item->key = hcjson__strdup(key);
-    item->type |= HCJSON_TAG_TRANSFERRED;
-    item->next = NULL;
-    item->prev = NULL;
-
-    if (!obj->value.child) {
-        obj->value.child = item;
-        obj->m_tail = item;
-        return HCJSON_SUCCESS;
+    for (hcjson *ijs = obj->value.child; ijs; ijs = ijs->next) {
+        if (strcmp(ijs->key, key) == 0) {
+            return ijs;
+        }
     }
 
-    obj->m_tail->next = item;
-    item->prev = obj->m_tail;
-    obj->m_tail = item;
+    return NULL;
+}
 
-    return HCJSON_SUCCESS;
+hcjson_result hcjson_add_item_to_array(hcjson *arr, const char *key, hcjson *item) {
+    HCJSON_ASSERT(arr && key && item, "arr, key, and item cannot be null");
+    return hcjson__add_item_to_list_json(arr, key, item);
+}
+
+hcjson_result hcjson_copy_item_to_array(hcjson *arr, const char *key, const hcjson *item) {
+    HCJSON_ASSERT(arr && key && item, "arr, key, and item cannot be null");
+    if (!hcjson_is_array(arr)) { return HCJSON_ERROR_INVALID_TYPE; }
+    hcjson *copy = hcjson__malloc(sizeof(hcjson));
+    if (!copy) { return HCJSON_ERROR_MALLOC_FAILURE; }
+    memcpy(copy, item, sizeof(hcjson));
+    copy->type &= ~HCJSON_TAG_TRANSFERRED;
+    return hcjson_add_item_to_array(arr, key, copy);
+}
+
+hcjson_result hcjson_destroy_item_in_array(hcjson *arr, uint32_t index) {
+    HCJSON_ASSERT(arr, "arr cannot be null");
+    return hcjson__remove_item_in_arr(arr, index, true, NULL);
+}
+
+hcjson *hcjson_remove_item_in_array(hcjson *arr, uint32_t index) {
+    HCJSON_ASSERT(arr, "arr cannot be null");
+    hcjson *ret = NULL;
+    if (hcjson__remove_item_in_arr(arr, index, false, &ret) != HCJSON_SUCCESS) {
+        return NULL;
+    }
+    return ret;
+}
+
+hcjson *hcjson_get_item_in_array(hcjson *arr, uint32_t index) {
+    HCJSON_ASSERT(arr, "arr cannot be null");
+
+    if (!hcjson_is_array(arr)) {
+        return NULL;
+    }
+
+    uint32_t i = 0;
+    for (hcjson *ijs = arr->value.child; ijs; ijs = ijs->next) {
+        if (index == i) {
+            return ijs;
+        }
+        i++;
+        if (i > index) {
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+uint32_t hcjson_list_size(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+
+    if (!hcjson__is_list_json(json)) {
+        return 0;
+    }
+
+    uint32_t i = 0;
+    for (hcjson *ijs = json->value.child; ijs; ijs = ijs->next) {
+        i++;
+    }
+
+    return i;
 }
 
 char *hcjson_to_string(hcjson *json) {
@@ -209,6 +416,12 @@ int main(int argc, char **argv) {
     hcjson_add_item_to_object(obj, "num2", num2);
     hcjson_add_item_to_object(obj, "num3", num3);
 
+    hcjson_copy_item_to_object(json, "num2", num2);
+    hcjson_copy_item_to_object(json, "num3", num3);
+
+    hcjson *ret = hcjson_remove_item_in_object(json, "num2");
+    hcjson_destroy(ret);
+
     for (hcjson *item = json->value.child; item; item = item->next) {
         if (item->type & HCJSON_TYPE_TRUE) {
             printf("%s: true\n", item->key);
@@ -226,6 +439,8 @@ int main(int argc, char **argv) {
             printf("%s: %lf\n", item->key, item->value.num);
         }
     }
+
+    printf("size: %u\n", hcjson_list_size(json));
 
     printf("s_memAllocCount: %zu\n", s_memAllocCount);
 

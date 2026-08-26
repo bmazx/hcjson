@@ -27,14 +27,19 @@
 #define HCJSON_TAG_TRANSFERRED   (0x80000000)
 
 #define HCJSON_SUCCESS (0)
-#define HCJSON_ERROR_INVALID_TYPE (-1)
-#define HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED (-2)
+#define HCJSON_ERROR_TASK_FAILED (-1)
+#define HCJSON_ERROR_MALLOC_FAILURE (-2)
+#define HCJSON_ERROR_INVALID_TYPE (-3)
+#define HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED (-4)
 
 #define HCJSON_TOKEN_BUFF_SIZE (64)
 #define HCJSON_TOKEN_BUFF_MULTIPLIER (2)
 
 #include <stdint.h>
+#include <stdbool.h>
 
+
+typedef int32_t hcjson_result;
 
 typedef struct hcjson {
     struct hcjson *prev;
@@ -66,8 +71,27 @@ hcjson *hcjson_create_number(double num);
 
 void hcjson_destroy(hcjson *json);
 
-int32_t hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
-int32_t hcjson_add_item_to_array(hcjson *obj, const char *key, hcjson *item);
+bool hcjson_is_object(hcjson *json);
+bool hcjson_is_array(hcjson *json);
+bool hcjson_is_true(hcjson *json);
+bool hcjson_is_false(hcjson *json);
+bool hcjson_is_null(hcjson *json);
+bool hcjson_is_string(hcjson *json);
+bool hcjson_is_number(hcjson *json);
+
+hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
+hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item);
+hcjson_result hcjson_destroy_item_in_object(hcjson *obj, const char *key);
+hcjson *hcjson_remove_item_in_object(hcjson *obj, const char *key);
+hcjson *hcjson_get_item_in_object(hcjson *obj, const char *key);
+
+hcjson_result hcjson_add_item_to_array(hcjson *arr, const char *key, hcjson *item);
+hcjson_result hcjson_copy_item_to_array(hcjson *arr, const char *key, const hcjson *item);
+hcjson_result hcjson_destroy_item_in_array(hcjson *arr, uint32_t index);
+hcjson *hcjson_remove_item_in_array(hcjson *arr, uint32_t index);
+hcjson *hcjson_get_item_in_array(hcjson *arr, uint32_t index);
+
+uint32_t hcjson_list_size(hcjson *json);
 
 char *hcjson_to_string(hcjson *json);
 
@@ -79,7 +103,6 @@ char *hcjson_to_string(hcjson *json);
 #ifdef HCJSON_IMPL
 
 #include <assert.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
