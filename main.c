@@ -24,12 +24,28 @@ void custom_free(void *ptr) {
 #include "hcjson.h"
 
 
-static bool          hcjson__is_list_json(hcjson *json);
+
+static char*         hcjson__concat(const char *str1, const char *str2);
+static bool          hcjson__is_list_json(const hcjson *json);
 static hcjson_result hcjson__add_item_to_list_json(hcjson *json, const char *key, hcjson *item);
 static hcjson_result hcjson__remove_item_in_obj(hcjson *obj, const char *key, bool destroy, hcjson **ret);
 static hcjson_result hcjson__remove_item_in_arr(hcjson *arr, uint32_t index, bool destroy, hcjson **ret);
+static void          hcjson__to_string_rec(hcjson_token_buffer *tbuff, const hcjson *json, uint32_t indent);
+static void          hcjson__token_buffer_expand(hcjson_token_buffer *tbuff);
+static void          hcjson__token_buffer_add(hcjson_token_buffer *tbuff, const hcjson_token_str tstr);
 
-static bool hcjson__is_list_json(hcjson *json) {
+static char* hcjson__concat(const char *str1, const char *str2) {
+    HCJSON_ASSERT(str1 && str2, "str1 and str2 cannot be null");
+    const size_t len1 = strlen(str1);
+    const size_t len2 = strlen(str2);
+    char *cc = (char*) hcjson__malloc(len1 + len2 + 1);
+    if (!cc) { return NULL; }
+    memcpy(cc, str1, len1);
+    memcpy(cc + len1, str2, len2 + 1);
+    return cc;
+}
+
+static bool hcjson__is_list_json(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & (HCJSON_TYPE_OBJECT | HCJSON_TYPE_ARRAY);
 }
@@ -142,6 +158,86 @@ static hcjson_result hcjson__remove_item_in_arr(hcjson *arr, uint32_t index, boo
     return HCJSON_ERROR_TASK_FAILED;
 }
 
+static void hcjson__to_string_rec(hcjson_token_buffer *tbuff, const hcjson *json, uint32_t indent) {
+    HCJSON_ASSERT(tbuff && json, "tbuff and json cannot be null");
+
+    if (indent) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_SPACING, "", indent});
+    }
+
+    if (json->key) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_STRING, json->key, strlen(json->key)});
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_COLON, ":", 1});
+    }
+
+    if (hcjson_is_object(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_LBRACE, "{", 1});
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NEWLINE, "\n", 1});
+        for (hcjson *ijs = json->value.child; ijs; ijs = ijs->next) {
+            hcjson__to_string_rec(tbuff, ijs, indent + HCJSON_INDENT_LENGTH);
+            if (ijs->next) {
+                hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_COMMA, ",", 1});
+                hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NEWLINE, "\n", 1});
+            }
+        }
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NEWLINE, "\n", 1});
+        if (indent) {
+            hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_SPACING, "", indent});
+        }
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_RBRACE, "}", 1});
+    }
+    else if (hcjson_is_array(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_LBRACKET, "[", 1});
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NEWLINE, "\n", 1});
+        for (hcjson *ijs = json->value.child; ijs; ijs = ijs->next) {
+            hcjson__to_string_rec(tbuff, ijs, indent + HCJSON_INDENT_LENGTH);
+            if (ijs->next) {
+                hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_COMMA, ",", 1});
+                hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NEWLINE, "\n", 1});
+            }
+        }
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NEWLINE, "\n", 1});
+        if (indent) {
+            hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_SPACING, "", indent});
+        }
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_RBRACKET, "]", 1});
+    }
+
+    if (hcjson_is_true(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_TRUE, "true", 4});
+    }
+    else if (hcjson_is_false(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_FALSE, "false", 5});
+    }
+    else if (hcjson_is_null(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NULL, "null", 4});
+    }
+    else if (hcjson_is_string(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_STRING, json->value.str, strlen(json->value.str)});
+    }
+    else if (hcjson_is_number(json)) {
+        hcjson__token_buffer_add(tbuff, (hcjson_token_str){HCJSON_TOKEN_NUMBER, NULL, 0, json->value.num});
+    }
+
+}
+
+void hcjson__token_buffer_expand(hcjson_token_buffer *tbuff) {
+    HCJSON_ASSERT(tbuff, "tbuff cannot be null");
+    tbuff->capacity = tbuff->capacity ? (tbuff->capacity * HCJSON_TOKEN_BUFF_MULTIPLIER) : HCJSON_TOKEN_BUFF_SIZE;
+    hcjson_token_str *temp = (hcjson_token_str*) hcjson__malloc(tbuff->capacity * sizeof(hcjson_token_str));
+    memcpy(temp, tbuff->tokens, tbuff->size * sizeof(hcjson_token_str));
+    hcjson__free(tbuff->tokens);
+    tbuff->tokens = temp;
+}
+
+void hcjson__token_buffer_add(hcjson_token_buffer *tbuff, const hcjson_token_str tstr) {
+    HCJSON_ASSERT(tbuff, "tbuff cannot be null");
+    if (tbuff->size >= tbuff->capacity) {
+        hcjson__token_buffer_expand(tbuff);
+    }
+    tbuff->tokens[tbuff->size++] = tstr;
+}
+
 hcjson *hcjson_create_object(void) {
     hcjson *json_obj = (hcjson*) hcjson__malloc(sizeof(hcjson));
     if (!json_obj) { return NULL; }
@@ -222,37 +318,37 @@ void hcjson_destroy(hcjson *json) {
     hcjson__free(json);
 }
 
-bool hcjson_is_object(hcjson *json) {
+bool hcjson_is_object(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_OBJECT;
 }
 
-bool hcjson_is_array(hcjson *json) {
+bool hcjson_is_array(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_ARRAY;
 }
 
-bool hcjson_is_true(hcjson *json) {
+bool hcjson_is_true(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_TRUE;
 }
 
-bool hcjson_is_false(hcjson *json) {
+bool hcjson_is_false(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_FALSE;
 }
 
-bool hcjson_is_null(hcjson *json) {
+bool hcjson_is_null(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_NULL;
 }
 
-bool hcjson_is_string(hcjson *json) {
+bool hcjson_is_string(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_STRING;
 }
 
-bool hcjson_is_number(hcjson *json) {
+bool hcjson_is_number(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & HCJSON_TYPE_NUMBER;
 }
@@ -302,19 +398,19 @@ hcjson *hcjson_get_item_in_object(hcjson *obj, const char *key) {
     return NULL;
 }
 
-hcjson_result hcjson_add_item_to_array(hcjson *arr, const char *key, hcjson *item) {
-    HCJSON_ASSERT(arr && key && item, "arr, key, and item cannot be null");
-    return hcjson__add_item_to_list_json(arr, key, item);
+hcjson_result hcjson_add_item_to_array(hcjson *arr, hcjson *item) {
+    HCJSON_ASSERT(arr && item, "arr and item cannot be null");
+    return hcjson__add_item_to_list_json(arr, "", item);
 }
 
-hcjson_result hcjson_copy_item_to_array(hcjson *arr, const char *key, const hcjson *item) {
-    HCJSON_ASSERT(arr && key && item, "arr, key, and item cannot be null");
+hcjson_result hcjson_copy_item_to_array(hcjson *arr, const hcjson *item) {
+    HCJSON_ASSERT(arr && item, "arr and item cannot be null");
     if (!hcjson_is_array(arr)) { return HCJSON_ERROR_INVALID_TYPE; }
     hcjson *copy = hcjson__malloc(sizeof(hcjson));
     if (!copy) { return HCJSON_ERROR_MALLOC_FAILURE; }
     memcpy(copy, item, sizeof(hcjson));
     copy->type &= ~HCJSON_TAG_TRANSFERRED;
-    return hcjson_add_item_to_array(arr, key, copy);
+    return hcjson_add_item_to_array(arr, copy);
 }
 
 hcjson_result hcjson_destroy_item_in_array(hcjson *arr, uint32_t index) {
@@ -368,7 +464,157 @@ uint32_t hcjson_list_size(hcjson *json) {
 }
 
 char *hcjson_to_string(hcjson *json) {
+    return hcjson_to_string_format(json, HCJSON_TOSTR_FLAG_WHITESPACE);
+}
+
+char *hcjson_to_string_format(hcjson *json, hcjson_flag flags) {
     HCJSON_ASSERT(json, "json cannot be null");
+
+    bool whitespace = flags & HCJSON_TOSTR_FLAG_WHITESPACE;
+    bool use_inline = flags & HCJSON_TOSTR_FLAG_INLINE;
+    bool use_tabs = flags & HCJSON_TOSTR_FLAG_USE_TABS;
+
+    hcjson_token_buffer tbuff = {0};
+
+    hcjson__to_string_rec(&tbuff, json, 0);
+
+    size_t len = 0;
+    for (size_t i = 0; i < tbuff.size; i++) {
+        if (tbuff.tokens[i].token == HCJSON_TOKEN_NUMBER) {
+            int ret = snprintf(NULL, 0, "%lf", tbuff.tokens[i].num);
+            if (ret < 0) { goto cleanup; }
+            len += ret;
+        }
+        if (tbuff.tokens[i].token == HCJSON_TOKEN_STRING) {
+            len += 2; // for quotes '\"'
+        }
+        else if (!use_inline && tbuff.tokens[i].token == HCJSON_TOKEN_NEWLINE) {
+            len++; // new line '\n'
+        }
+        else if (whitespace && tbuff.tokens[i].token == HCJSON_TOKEN_COLON) {
+            len += 1; // add spacing in colon ": "
+        }
+        else if (tbuff.tokens[i].token == HCJSON_TOKEN_SPACING) {
+            if (use_inline) {
+                continue;
+            }
+            else if (use_tabs) {
+                len += tbuff.tokens[i].len / HCJSON_INDENT_LENGTH;
+                continue;
+            }
+        }
+
+        len += tbuff.tokens[i].len;
+    }
+    len++; // null terminator
+
+    char *json_str = NULL;
+    size_t pen = 0;
+
+    json_str = (char*) hcjson__malloc(len * sizeof(char));
+    if (!json_str) { goto cleanup; }
+
+    for (size_t i = 0; i < tbuff.size; i++) {
+        switch (tbuff.tokens[i].token) {
+            case HCJSON_TOKEN_SPACING: {
+                if (use_inline || !whitespace) {
+                    break;
+                }
+                if (use_tabs) {
+                    uint32_t indent = tbuff.tokens[i].len / HCJSON_INDENT_LENGTH;
+                    for (uint32_t j = 0; j < indent; j++) {
+                        json_str[pen++] = '\t';
+                    }
+                }
+                else {
+                    for (uint32_t j = 0; j < tbuff.tokens[i].len; j++) {
+                        json_str[pen++] = ' ';
+                    }
+                }
+                break;
+            }
+            case HCJSON_TOKEN_NEWLINE: {
+                if (!use_inline) {
+                    json_str[pen++] = '\n';
+                }
+                break;
+            }
+            case HCJSON_TOKEN_LBRACE: {
+                json_str[pen++] = '{';
+                break;
+            }
+            case HCJSON_TOKEN_RBRACE: {
+                json_str[pen++] = '}';
+                break;
+            }
+            case HCJSON_TOKEN_LBRACKET: {
+                json_str[pen++] = '[';
+                break;
+            }
+            case HCJSON_TOKEN_RBRACKET: {
+                json_str[pen++] = ']';
+                break;
+            }
+            case HCJSON_TOKEN_COMMA: {
+                json_str[pen++] = ',';
+                break;
+            }
+            case HCJSON_TOKEN_COLON: {
+                json_str[pen++] = ':';
+                if (whitespace) {
+                    json_str[pen++] = ' ';
+                }
+                break;
+            }
+            case HCJSON_TOKEN_TRUE: {
+                json_str[pen++] = 't';
+                json_str[pen++] = 'r';
+                json_str[pen++] = 'u';
+                json_str[pen++] = 'e';
+                break;
+            }
+            case HCJSON_TOKEN_FALSE: {
+                json_str[pen++] = 'f';
+                json_str[pen++] = 'a';
+                json_str[pen++] = 'l';
+                json_str[pen++] = 's';
+                json_str[pen++] = 'e';
+                break;
+            }
+            case HCJSON_TOKEN_NULL: {
+                json_str[pen++] = 'n';
+                json_str[pen++] = 'u';
+                json_str[pen++] = 'l';
+                json_str[pen++] = 'l';
+                break;
+            }
+            case HCJSON_TOKEN_STRING: {
+                json_str[pen++] = '\"';
+                for (uint32_t j = 0; j < tbuff.tokens[i].len; j++) {
+                    json_str[pen++] = tbuff.tokens[i].str[j];
+                }
+                json_str[pen++] = '\"';
+                break;
+            }
+            case HCJSON_TOKEN_NUMBER: {
+                char buff[64];
+                snprintf(buff, 64, "%lf", tbuff.tokens[i].num);
+                size_t num_len = strlen(buff);
+                for (uint32_t j = 0; j < num_len; j++) {
+                    json_str[pen++] = buff[j];
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    json_str[pen] = '\0';
+
+cleanup:
+    hcjson__free(tbuff.tokens);
+    return json_str;
 }
 
 char* loadFile(const char* filepath) {
@@ -422,25 +668,30 @@ int main(int argc, char **argv) {
     hcjson *ret = hcjson_remove_item_in_object(json, "num2");
     hcjson_destroy(ret);
 
-    for (hcjson *item = json->value.child; item; item = item->next) {
-        if (item->type & HCJSON_TYPE_TRUE) {
-            printf("%s: true\n", item->key);
-        }
-        else if (item->type & HCJSON_TYPE_FALSE) {
-            printf("%s: false\n", item->key);
-        }
-        else if (item->type & HCJSON_TYPE_NULL) {
-            printf("%s: null\n", item->key);
-        }
-        else if (item->type & HCJSON_TYPE_STRING) {
-            printf("%s: %s\n", item->key, item->value.str);
-        }
-        else if (item->type & HCJSON_TYPE_NUMBER) {
-            printf("%s: %lf\n", item->key, item->value.num);
-        }
-    }
+    hcjson *arr = hcjson_create_array();
+
+    hcjson *elm1 = hcjson_create_number(9);
+    hcjson *elm2 = hcjson_create_number(8);
+    hcjson *elm3 = hcjson_create_number(7);
+    hcjson *elm4 = hcjson_create_string("woo");
+    hcjson *elm5 = hcjson_create_false();
+
+    hcjson_add_item_to_array(arr, elm1);
+    hcjson_add_item_to_array(arr, elm2);
+    hcjson_add_item_to_array(arr, elm3);
+    hcjson_add_item_to_array(arr, elm4);
+    hcjson_add_item_to_array(arr, elm5);
+
+    hcjson_add_item_to_object(json, "arr", arr);
 
     printf("size: %u\n", hcjson_list_size(json));
+
+    char *json_str = hcjson_to_string(json);
+    printf("%s\n", json_str);
+
+    hcjson__free(json_str);
+
+
 
     printf("s_memAllocCount: %zu\n", s_memAllocCount);
 
