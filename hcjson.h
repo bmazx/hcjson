@@ -31,9 +31,10 @@
 #define HCJSON_TYPE_NUMBER       (0x00000040)
 #define HCJSON_TAG_TRANSFERRED   (0x80000000)
 
-#define HCJSON_TOSTR_FLAG_INLINE     (0x00000001)
-#define HCJSON_TOSTR_FLAG_WHITESPACE (0x00000002)
-#define HCJSON_TOSTR_FLAG_USE_TABS   (0x00000004)
+#define HCJSON_TOSTR_FLAG_INLINE              (0x00000001)
+#define HCJSON_TOSTR_FLAG_WHITESPACE          (0x00000002)
+#define HCJSON_TOSTR_FLAG_USE_TABS            (0x00000004)
+#define HCJSON_TOSTR_FLAG_CAST_NUMBER_TYPES   (0x00000008)
 
 #define HCJSON_SUCCESS (0)
 #define HCJSON_ERROR_TASK_FAILED (-1)
@@ -89,6 +90,9 @@ bool hcjson_is_null(const hcjson *json);
 bool hcjson_is_string(const hcjson *json);
 bool hcjson_is_number(const hcjson *json);
 
+bool hcjson_is_number_int(const hcjson *json);
+
+
 hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
 hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item);
 hcjson_result hcjson_destroy_item_in_object(hcjson *obj, const char *key);
@@ -116,7 +120,7 @@ char *hcjson_to_string_format(hcjson *json, hcjson_flag flags);
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <inttypes.h>
 
 typedef enum hcjson_token {
     HCJSON_TOKEN_INVALID,

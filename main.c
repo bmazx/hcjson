@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 static size_t s_memAllocCount = 0;
 
@@ -24,9 +25,8 @@ void custom_free(void *ptr) {
 #include "hcjson.h"
 
 
-
-static char*         hcjson__concat(const char *str1, const char *str2);
 static bool          hcjson__is_list_json(const hcjson *json);
+static bool          hcjson__is_num_int(double num);
 static hcjson_result hcjson__add_item_to_list_json(hcjson *json, const char *key, hcjson *item);
 static hcjson_result hcjson__remove_item_in_obj(hcjson *obj, const char *key, bool destroy, hcjson **ret);
 static hcjson_result hcjson__remove_item_in_arr(hcjson *arr, uint32_t index, bool destroy, hcjson **ret);
@@ -34,20 +34,13 @@ static void          hcjson__to_string_rec(hcjson_token_buffer *tbuff, const hcj
 static void          hcjson__token_buffer_expand(hcjson_token_buffer *tbuff);
 static void          hcjson__token_buffer_add(hcjson_token_buffer *tbuff, const hcjson_token_str tstr);
 
-static char* hcjson__concat(const char *str1, const char *str2) {
-    HCJSON_ASSERT(str1 && str2, "str1 and str2 cannot be null");
-    const size_t len1 = strlen(str1);
-    const size_t len2 = strlen(str2);
-    char *cc = (char*) hcjson__malloc(len1 + len2 + 1);
-    if (!cc) { return NULL; }
-    memcpy(cc, str1, len1);
-    memcpy(cc + len1, str2, len2 + 1);
-    return cc;
-}
-
 static bool hcjson__is_list_json(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
     return json->type & (HCJSON_TYPE_OBJECT | HCJSON_TYPE_ARRAY);
+}
+
+static bool hcjson__is_num_int(double num) {
+    return num == (int64_t)num;
 }
 
 static hcjson_result hcjson__add_item_to_list_json(hcjson *json, const char *key, hcjson *item) {
@@ -353,6 +346,13 @@ bool hcjson_is_number(const hcjson *json) {
     return json->type & HCJSON_TYPE_NUMBER;
 }
 
+bool hcjson_is_number_int(const hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    if (!hcjson_is_number(json)) { return false; }
+    double val = json->value.num;
+    return hcjson__is_num_int(val);
+}
+
 hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item) {
     HCJSON_ASSERT(obj && key && item, "obj, key, and item cannot be null");
     return hcjson__add_item_to_list_json(obj, key, item);
@@ -464,7 +464,7 @@ uint32_t hcjson_list_size(hcjson *json) {
 }
 
 char *hcjson_to_string(hcjson *json) {
-    return hcjson_to_string_format(json, HCJSON_TOSTR_FLAG_WHITESPACE);
+    return hcjson_to_string_format(json, HCJSON_TOSTR_FLAG_WHITESPACE | HCJSON_TOSTR_FLAG_CAST_NUMBER_TYPES);
 }
 
 char *hcjson_to_string_format(hcjson *json, hcjson_flag flags) {
@@ -473,6 +473,7 @@ char *hcjson_to_string_format(hcjson *json, hcjson_flag flags) {
     bool whitespace = flags & HCJSON_TOSTR_FLAG_WHITESPACE;
     bool use_inline = flags & HCJSON_TOSTR_FLAG_INLINE;
     bool use_tabs = flags & HCJSON_TOSTR_FLAG_USE_TABS;
+    bool cast_num = flags & HCJSON_TOSTR_FLAG_CAST_NUMBER_TYPES;
 
     hcjson_token_buffer tbuff = {0};
 
@@ -481,7 +482,14 @@ char *hcjson_to_string_format(hcjson *json, hcjson_flag flags) {
     size_t len = 0;
     for (size_t i = 0; i < tbuff.size; i++) {
         if (tbuff.tokens[i].token == HCJSON_TOKEN_NUMBER) {
-            int ret = snprintf(NULL, 0, "%lf", tbuff.tokens[i].num);
+            int ret = 0;
+            double vald = tbuff.tokens[i].num;
+            if (cast_num && hcjson__is_num_int(vald)) {
+                ret = snprintf(NULL, 0, "%" PRId64, (int64_t)vald);
+            }
+            else {
+                ret = snprintf(NULL, 0, "%g", vald);
+            }
             if (ret < 0) { goto cleanup; }
             len += ret;
         }
@@ -597,8 +605,14 @@ char *hcjson_to_string_format(hcjson *json, hcjson_flag flags) {
                 break;
             }
             case HCJSON_TOKEN_NUMBER: {
+                double vald = tbuff.tokens[i].num;
                 char buff[64];
-                snprintf(buff, 64, "%lf", tbuff.tokens[i].num);
+                if (cast_num && hcjson__is_num_int(vald)) {
+                    snprintf(buff, 64, "%" PRId64, (int64_t)vald);
+                }
+                else {
+                    snprintf(buff, 64, "%g", vald);
+                }
                 size_t num_len = strlen(buff);
                 for (uint32_t j = 0; j < num_len; j++) {
                     json_str[pen++] = buff[j];
@@ -650,7 +664,7 @@ int main(int argc, char **argv) {
     hcjson *boo = hcjson_create_true();
 
     hcjson *obj = hcjson_create_object();
-    hcjson *num2 = hcjson_create_number(1234);
+    hcjson *num2 = hcjson_create_number(pow(2, 53));
     hcjson *num3 = hcjson_create_number(-5678);
 
     hcjson_add_item_to_object(json, "str", str);
@@ -690,7 +704,6 @@ int main(int argc, char **argv) {
     printf("%s\n", json_str);
 
     hcjson__free(json_str);
-
 
 
     printf("s_memAllocCount: %zu\n", s_memAllocCount);
