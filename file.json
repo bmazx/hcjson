@@ -2,5 +2,15 @@
     "num": 67,
     "str": "hello hcjson",
     "flo": 3.1415,
-    "boo": true
+    "boo": true,
+    "obj": {
+
+    },
+    "arr": [
+        1,
+        2,
+        3,
+        "woo",
+        true
+    ]
 }

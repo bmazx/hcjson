@@ -20,6 +20,9 @@
 #ifndef HCJSON_INDENT_LENGTH
     #define HCJSON_INDENT_LENGTH (4)
 #endif
+#ifndef HCJSON_NUMBER_BUFF_SIZE
+    #define HCJSON_NUMBER_BUFF_SIZE (64)
+#endif
 
 #define HCJSON_TYPE_INVALID      (0x00000000)
 #define HCJSON_TYPE_TRUE         (0x00000001)
@@ -70,8 +73,6 @@ typedef struct hcjson {
 extern "C" {
 #endif
 
-hcjson *hcjson_parse(const char* json);
-
 hcjson *hcjson_create_object(void);
 hcjson *hcjson_create_array(void);
 hcjson *hcjson_create_true(void);
@@ -109,6 +110,9 @@ uint32_t hcjson_list_size(hcjson *json);
 
 char *hcjson_to_string(hcjson *json);
 char *hcjson_to_string_format(hcjson *json, hcjson_flag flags);
+
+hcjson *hcjson_parse(const char* json);
+
 
 #ifdef __cplusplus
 }
