@@ -3,13 +3,13 @@ header C json, small and simple single header library written in C99 for reading
 
 # Quickstart
 add a new empty source file to your project and include this
-```
+```c
 #define HCJSON_IMPL
 #include "hcjson.h"
 ```
 
 ## json Structure
-```
+```c
 typedef struct hcjson {
     struct hcjson *prev;
     struct hcjson *next;
@@ -29,7 +29,7 @@ this is the basis json structure to store all json objects, arrays, numbers, etc
 
 ## Creating json structure and print to output
 this example creates a json structure in C and then prints the structure to output, the resulting output should look like this:
-```
+```json
 {
     "ships": [
         {
@@ -61,7 +61,7 @@ this example creates a json structure in C and then prints the structure to outp
 ```
 
 example code to create json structure:
-```
+```c
 #define HCJSON_IMPL
 #include "hcjson.h"
 
@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
 First get the the source string for json string either from a file or string in C.
 
 then parse the string with `hcjson_parse()`, for example:
-```
+```c
 int main() {
     const char *json_str = ...;
 
