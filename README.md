@@ -27,6 +27,72 @@ this is the basis json structure to store all json objects, arrays, numbers, etc
 - the hcjson struct works like a linked list with each element being in the same object/array
 - each hcjson can store a string, number, or child hcjson used to store nested objects/arrays
 
+## Creating json
+Use these functions to create and allocate a hcjson struct for each json type:
+```c
+hcjson *hcjson_create_object(void);
+hcjson *hcjson_create_array(void);
+hcjson *hcjson_create_true(void);
+hcjson *hcjson_create_false(void);
+hcjson *hcjson_create_null(void);
+hcjson *hcjson_create_string(const char *str);
+hcjson *hcjson_create_number(double num);
+```
+
+code example:
+```c
+hcjson *obj = hcjson_create_object();
+hcjson *num = hcjson_create_number(3.1415);
+hcjson *str = hcjson_create_string("foo");
+```
+
+json items can be added to objects or arrays using these functions:
+```
+hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
+hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item);
+```
+
+code example:
+```c
+hcjson *obj = hcjson_create_object();
+
+hcjson *num = hcjson_create_number(42);
+hcjson_add_item_to_object(obj, "mykey", num);
+
+hcjson *arr = hcjson_create_array();
+hcjson *str = hcjson_create_string("hello hcjson");
+hcjson_add_item_to_object(arr, str);
+```
+Notice that there is no key parameter for `hcjson_add_item_to_array()` since arrays in json do not have keys.
+
+**Important: hcjson does now allow references of the same struct to be added to the same hcjson struct, meaning you cannot do this:**
+```c
+hcjson *json = hcjson_create_object();
+hcjson *num = hcjson_create_number(124);
+
+hcjson_add_item_to_object(json, "key1", num); // add num to json
+hcjson_add_item_to_object(json, "key2", num); // not allowed: adding the same num hcjson reference to json again
+```
+this would result in `hcjson_add_item_to_object` to return `HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED` and hcjson will not add num again to the struct.
+
+If you need to add items with duplicate values, use:
+```c
+hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item);
+hcjson_result hcjson_copy_item_to_array(hcjson *arr, const hcjson *item);
+```
+
+## Checking type
+You can check the type of a hcjson struct using these functions:
+```c
+bool hcjson_is_object(const hcjson *json);
+bool hcjson_is_array(const hcjson *json);
+bool hcjson_is_true(const hcjson *json);
+bool hcjson_is_false(const hcjson *json);
+bool hcjson_is_null(const hcjson *json);
+bool hcjson_is_string(const hcjson *json);
+bool hcjson_is_number(const hcjson *json);
+```
+
 ## Creating json structure and print to output
 this example creates a json structure in C and then prints the structure to output, the resulting output should look like this:
 ```json
