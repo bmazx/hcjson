@@ -54,11 +54,12 @@
 
 typedef int32_t hcjson_flag;
 typedef int32_t hcjson_result;
+typedef int32_t hcjson_type;
 
 typedef struct hcjson {
     struct hcjson *prev;
     struct hcjson *next;
-    int32_t type;
+    hcjson_type type;
     char* key;
     union {
         struct hcjson *child;
