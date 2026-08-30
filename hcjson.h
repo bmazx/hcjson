@@ -95,7 +95,6 @@ bool hcjson_is_number(const hcjson *json);
 
 bool hcjson_is_number_int(const hcjson *json);
 
-
 hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
 hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item);
 hcjson_result hcjson_destroy_item_in_object(hcjson *obj, const char *key);
