@@ -1,3 +1,9 @@
+/*
+ * this example creates a hcjson struct from the json string below,
+ * hcjson will parse the string and create a heirarchy of hcjson structs.
+ * the structs will then be printed
+ */
+
 #define HCJSON_IMPL
 #include "hcjson.h"
 

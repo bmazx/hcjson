@@ -23,7 +23,7 @@ typedef struct hcjson {
     struct hcjson *m_tail;
 } hcjson;
 ```
-this is the basis json structure to store all json objects, arrays, numbers, etc.
+this is the basis json structure for all json objects and items
 - the hcjson struct works like a linked list with each element being in the same object/array
 - each hcjson can store a string, number, or child hcjson used to store nested objects/arrays
 
@@ -49,7 +49,7 @@ hcjson *str = hcjson_create_string("foo");
 json items can be added to objects or arrays using these functions:
 ```c
 hcjson_result hcjson_add_item_to_object(hcjson *obj, const char *key, hcjson *item);
-hcjson_result hcjson_copy_item_to_object(hcjson *obj, const char *key, const hcjson *item);
+hcjson_result hcjson_add_item_to_array(hcjson *arr, hcjson *item);
 ```
 
 code example:
