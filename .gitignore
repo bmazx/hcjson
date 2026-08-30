@@ -53,3 +53,6 @@ dkms.conf
 
 # other
 main
+main.c
+compile_commands.json
+build/
