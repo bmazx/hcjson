@@ -216,7 +216,7 @@ First get the the source string for json string either from a file or string in 
 then parse the string with `hcjson_parse()`, for example:
 ```c
 int main() {
-    const char *json_str = ...;
+    const char *json_str = "{\"foo\": \"hello hcjson\", \"bar\": 567, \"val\": true}"
 
     // create json struct from string
     hcjson *json = hcjson_parse(json_str);

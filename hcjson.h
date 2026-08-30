@@ -119,6 +119,7 @@ hcjson *hcjson_parse(const char* json);
 }
 #endif
 
+
 #ifdef HCJSON_IMPL
 
 #include <assert.h>
@@ -485,7 +486,9 @@ static hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t
         .len = 0,
     };
 
-    while (ps->json[*pos] != ',' && !hcjson__whitespace(ps->json[*pos]) && *pos < len) {
+    while (ps->json[*pos] != ',' && ps->json[*pos] != '}' && ps->json[*pos] != ']' &&
+           !hcjson__whitespace(ps->json[*pos]) &&
+           *pos < len) {
         (*pos)++;
         tstr.len++;
     }
@@ -503,13 +506,13 @@ static hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t
         tstr.token = HCJSON_TOKEN_NUMBER;
         char *end;
         char buff[HCJSON_NUMBER_BUFF_SIZE];
-        if (len > HCJSON_NUMBER_BUFF_SIZE) {
+        if (len > HCJSON_NUMBER_BUFF_SIZE - 1) {
             memcpy(buff, tstr.str, HCJSON_NUMBER_BUFF_SIZE);
             buff[HCJSON_NUMBER_BUFF_SIZE - 1] = '\0';
         }
         else {
             memcpy(buff, tstr.str, tstr.len);
-            buff[tstr.len - 1] = '\0';
+            buff[tstr.len] = '\0';
         }
         tstr.num = strtod(buff, &end);
     }
