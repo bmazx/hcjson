@@ -108,6 +108,10 @@ hcjson_result hcjson_destroy_item_in_array(hcjson *arr, uint32_t index);
 hcjson *hcjson_remove_item_in_array(hcjson *arr, uint32_t index);
 hcjson *hcjson_get_item_in_array(hcjson *arr, uint32_t index);
 
+bool hcjson_get_bool(hcjson *json);
+const char* hcjson_get_str(hcjson *json);
+double hcjson_get_num(hcjson *json);
+
 size_t hcjson_list_size(hcjson *json);
 
 char *hcjson_to_string(hcjson *json);
@@ -935,6 +939,24 @@ hcjson *hcjson_get_item_in_array(hcjson *arr, uint32_t index) {
     }
 
     return NULL;
+}
+
+bool hcjson_get_bool(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    HCJSON_ASSERT(hcjson_is_true(json) || hcjson_is_false(json), "json needs to be true or false item");
+    return hcjson_is_true(json) ? true : false;
+}
+
+const char* hcjson_get_str(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    HCJSON_ASSERT(hcjson_is_string(json), "json needs to be string item");
+    return json->value.str;
+}
+
+double hcjson_get_num(hcjson *json) {
+    HCJSON_ASSERT(json, "json cannot be null");
+    HCJSON_ASSERT(hcjson_is_number(json), "json needs to be number item");
+    return json->value.num;
 }
 
 size_t hcjson_list_size(hcjson *json) {
