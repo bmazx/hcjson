@@ -48,8 +48,9 @@
 #define HCJSON_TOKEN_BUFF_SIZE (64)
 #define HCJSON_TOKEN_BUFF_MULTIPLIER (2)
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 
 typedef int32_t hcjson_flag;
@@ -107,7 +108,7 @@ hcjson_result hcjson_destroy_item_in_array(hcjson *arr, uint32_t index);
 hcjson *hcjson_remove_item_in_array(hcjson *arr, uint32_t index);
 hcjson *hcjson_get_item_in_array(hcjson *arr, uint32_t index);
 
-uint32_t hcjson_list_size(hcjson *json);
+size_t hcjson_list_size(hcjson *json);
 
 char *hcjson_to_string(hcjson *json);
 char *hcjson_to_string_format(hcjson *json, hcjson_flag flags);
@@ -936,14 +937,14 @@ hcjson *hcjson_get_item_in_array(hcjson *arr, uint32_t index) {
     return NULL;
 }
 
-uint32_t hcjson_list_size(hcjson *json) {
+size_t hcjson_list_size(hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
 
     if (!hcjson__is_list_json(json)) {
         return 0;
     }
 
-    uint32_t i = 0;
+    size_t i = 0;
     for (hcjson *ijs = json->value.child; ijs; ijs = ijs->next) {
         i++;
     }
