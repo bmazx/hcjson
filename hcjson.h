@@ -159,7 +159,6 @@ typedef struct hcjson_token_buffer {
 typedef struct hcjson_parser {
     const char *json;
     hcjson_token_buffer tbuff;
-    size_t tbuff_index;
 } hcjson_parser;
 
 void *hcjson__malloc(size_t size);
