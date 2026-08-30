@@ -226,3 +226,15 @@ int main() {
     return 0;
 }
 ```
+
+## Memory Allocation
+By default hcjson uses malloc and free to allocate memory.
+To redirect memory allocation, define these macros with your own memory allocators before including hcjson.
+```c
+
+#define HCJSON_MALLOC(sz) custom_malloc(sz)
+#define HCJSON_FREE(ptr) custom_free(ptr)
+
+#define HCJSON_IMPL
+#include "hcjson.h"
+```
