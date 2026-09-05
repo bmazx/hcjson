@@ -65,7 +65,7 @@ hcjson_add_item_to_object(arr, str);
 ```
 Notice there is no key parameter for `hcjson_add_item_to_array()` since arrays do not have keys in json.
 
-**Important: hcjson does now allow references of the same struct to be added to the same hcjson struct **
+**Important: hcjson does now allow references of the same struct to be added to the same hcjson struct**
 
 meaning you cannot do this:
 ```c
