@@ -23,6 +23,9 @@
 #ifndef HCJSON_NUMBER_BUFF_SIZE
     #define HCJSON_NUMBER_BUFF_SIZE (64)
 #endif
+#ifndef HCJSON_RECC_LIMIT
+    #define HCJSON_RECC_LIMIT (256)
+#endif
 
 #define HCJSON_TYPE_INVALID      (0x00000000)
 #define HCJSON_TYPE_TRUE         (0x00000001)
@@ -167,6 +170,13 @@ typedef struct hcjson_parser {
     hcjson_token_buffer tbuff;
 } hcjson_parser;
 
+typedef struct hcjson_parse_val {
+    hcjson_parser ps;
+    size_t tbuff_index;
+    size_t recc_count;
+} hcjson_parse_val;
+
+
 static void *hcjson__malloc(size_t size);
 static void hcjson__free(void* ptr);
 static char *hcjson__strdup(const char* str);
@@ -203,9 +213,9 @@ static void             hcjson__token_buffer_add(hcjson_token_buffer *tbuff, con
 static void             hcjson__lex_json(hcjson_parser *ps);
 static hcjson_token_str hcjson__lex_value_str(hcjson_parser *ps, size_t *pos, size_t len);
 static hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t len);
-static hcjson*          hcjson__parse_object(const hcjson_parser *ps, size_t *tbuff_index);
-static hcjson*          hcjson__parse_array(const hcjson_parser *ps, size_t *tbuff_index);
-static hcjson*          hcjson__parse_item(const hcjson_parser *ps, size_t *tbuff_index);
+static hcjson*          hcjson__parse_object(hcjson_parse_val *psval);
+static hcjson*          hcjson__parse_array(hcjson_parse_val *psval);
+static hcjson*          hcjson__parse_item(hcjson_parse_val *psval);
 
 static bool hcjson__is_list_json(const hcjson *json) {
     HCJSON_ASSERT(json, "json cannot be null");
@@ -524,13 +534,13 @@ static hcjson_token_str hcjson__lex_value(hcjson_parser *ps, size_t *pos, size_t
     return tstr;
 }
 
-static hcjson *hcjson__parse_object(const hcjson_parser *ps, size_t *tbuff_index) {
-    HCJSON_ASSERT(ps && tbuff_index, "ps and tbuff_index cannot be null");
+static hcjson *hcjson__parse_object(hcjson_parse_val *psval) {
+    HCJSON_ASSERT(psval, "psval cannot be null");
 
-    if (ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_LBRACE) {
+    if (psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_LBRACE) {
         return NULL;
     }
-    if (*tbuff_index >= ps->tbuff.size) {
+    if (psval->tbuff_index >= psval->ps.tbuff.size) {
         return NULL;
     }
 
@@ -542,35 +552,35 @@ static hcjson *hcjson__parse_object(const hcjson_parser *ps, size_t *tbuff_index
         goto fail_cleanup;
     }
 
-    (*tbuff_index)++;
+    psval->tbuff_index++;
 
-    while (ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_RBRACE && *tbuff_index < ps->tbuff.size) {
+    while (psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_RBRACE && psval->tbuff_index < psval->ps.tbuff.size) {
         // key string
-        if (*tbuff_index >= ps->tbuff.size || ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_STRING) {
+        if (psval->tbuff_index >= psval->ps.tbuff.size || psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_STRING) {
             goto fail_cleanup;
         }
 
-        size_t str_len = ps->tbuff.tokens[*tbuff_index].len;
+        size_t str_len = psval->ps.tbuff.tokens[psval->tbuff_index].len;
         key_buff = (char*) hcjson__malloc(str_len * sizeof(char));
         if (!key_buff) {
             goto fail_cleanup;
         }
-        memcpy(key_buff, ps->tbuff.tokens[*tbuff_index].str, str_len * sizeof(char));
+        memcpy(key_buff, psval->ps.tbuff.tokens[psval->tbuff_index].str, str_len * sizeof(char));
         key_buff[str_len] = '\0';
 
         // skip colon
-        (*tbuff_index)++;
-        if (*tbuff_index >= ps->tbuff.size || ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_COLON) {
+        psval->tbuff_index++;
+        if (psval->tbuff_index >= psval->ps.tbuff.size || psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_COLON) {
             goto fail_cleanup;
         }
 
         // item
-        (*tbuff_index)++;
-        if (*tbuff_index >= ps->tbuff.size) {
+        psval->tbuff_index++;
+        if (psval->tbuff_index >= psval->ps.tbuff.size) {
             goto fail_cleanup;
         }
 
-        hcjson *item = hcjson__parse_item(ps, tbuff_index);
+        hcjson *item = hcjson__parse_item(psval);
         if (!item) {
             goto fail_cleanup;
         }
@@ -582,12 +592,12 @@ static hcjson *hcjson__parse_object(const hcjson_parser *ps, size_t *tbuff_index
         // do this to prevent skipping comma two times
         if (!(hcjson_is_object(item) || hcjson_is_array(item))) {
             // skip comma if there
-            (*tbuff_index)++;
-            if (*tbuff_index >= ps->tbuff.size) {
+            psval->tbuff_index++;
+            if (psval->tbuff_index >= psval->ps.tbuff.size) {
                 goto fail_cleanup;
             }
-            if (ps->tbuff.tokens[*tbuff_index].token == HCJSON_TOKEN_COMMA) {
-                (*tbuff_index)++;
+            if (psval->ps.tbuff.tokens[psval->tbuff_index].token == HCJSON_TOKEN_COMMA) {
+                psval->tbuff_index++;
             }
         }
 
@@ -595,13 +605,13 @@ static hcjson *hcjson__parse_object(const hcjson_parser *ps, size_t *tbuff_index
         key_buff = NULL;
     }
 
-    if (*tbuff_index < ps->tbuff.size && ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_RBRACE) {
+    if (psval->tbuff_index < psval->ps.tbuff.size && psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_RBRACE) {
         goto fail_cleanup;
     }
-    (*tbuff_index)++;
+    psval->tbuff_index++;
 
-    if (*tbuff_index < ps->tbuff.size && ps->tbuff.tokens[*tbuff_index].token == HCJSON_TOKEN_COMMA) {
-        (*tbuff_index)++;
+    if (psval->tbuff_index < psval->ps.tbuff.size && psval->ps.tbuff.tokens[psval->tbuff_index].token == HCJSON_TOKEN_COMMA) {
+        psval->tbuff_index++;
     }
 
     hcjson__free(key_buff);
@@ -613,13 +623,13 @@ fail_cleanup:
     return NULL;
 }
 
-static hcjson *hcjson__parse_array(const hcjson_parser *ps, size_t *tbuff_index) {
-    HCJSON_ASSERT(ps && tbuff_index, "ps and tbuff_index cannot be null");
+static hcjson *hcjson__parse_array(hcjson_parse_val *psval) {
+    HCJSON_ASSERT(psval, "psval cannot be null");
 
-    if (ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_LBRACKET) {
+    if (psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_LBRACKET) {
         return NULL;
     }
-    if (*tbuff_index >= ps->tbuff.size) {
+    if (psval->tbuff_index >= psval->ps.tbuff.size) {
         return NULL;
     }
 
@@ -630,15 +640,15 @@ static hcjson *hcjson__parse_array(const hcjson_parser *ps, size_t *tbuff_index)
         goto fail_cleanup;
     }
 
-    (*tbuff_index)++;
+    psval->tbuff_index++;
 
-    while (ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_RBRACKET && *tbuff_index < ps->tbuff.size) {
+    while (psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_RBRACKET && psval->tbuff_index < psval->ps.tbuff.size) {
         // item
-        if (*tbuff_index >= ps->tbuff.size) {
+        if (psval->tbuff_index >= psval->ps.tbuff.size) {
             goto fail_cleanup;
         }
 
-        hcjson *item = hcjson__parse_item(ps, tbuff_index);
+        hcjson *item = hcjson__parse_item(psval);
         if (!item) {
             goto fail_cleanup;
         }
@@ -650,23 +660,23 @@ static hcjson *hcjson__parse_array(const hcjson_parser *ps, size_t *tbuff_index)
         // skip comma if there
         // do this to prevent skipping comma two times
         if (!(hcjson_is_object(item) || hcjson_is_array(item))) {
-            (*tbuff_index)++;
-            if (*tbuff_index >= ps->tbuff.size) {
+            psval->tbuff_index++;
+            if (psval->tbuff_index >= psval->ps.tbuff.size) {
                 goto fail_cleanup;
             }
-            if (ps->tbuff.tokens[*tbuff_index].token == HCJSON_TOKEN_COMMA) {
-                (*tbuff_index)++;
+            if (psval->ps.tbuff.tokens[psval->tbuff_index].token == HCJSON_TOKEN_COMMA) {
+                psval->tbuff_index++;
             }
         }
     }
 
-    if (*tbuff_index < ps->tbuff.size && ps->tbuff.tokens[*tbuff_index].token != HCJSON_TOKEN_RBRACKET) {
+    if (psval->tbuff_index < psval->ps.tbuff.size && psval->ps.tbuff.tokens[psval->tbuff_index].token != HCJSON_TOKEN_RBRACKET) {
         goto fail_cleanup;
     }
-    (*tbuff_index)++;
+    psval->tbuff_index++;
 
-    if (*tbuff_index < ps->tbuff.size && ps->tbuff.tokens[*tbuff_index].token == HCJSON_TOKEN_COMMA) {
-        (*tbuff_index)++;
+    if (psval->tbuff_index < psval->ps.tbuff.size && psval->ps.tbuff.tokens[psval->tbuff_index].token == HCJSON_TOKEN_COMMA) {
+        psval->tbuff_index++;
     }
 
     return json;
@@ -676,21 +686,26 @@ fail_cleanup:
     return NULL;
 }
 
-static hcjson *hcjson__parse_item(const hcjson_parser *ps, size_t *tbuff_index) {
-    HCJSON_ASSERT(ps && tbuff_index, "ps and tbuff_index cannot be null");
+static hcjson *hcjson__parse_item(hcjson_parse_val *psval) {
+    HCJSON_ASSERT(psval, "psval cannot be null");
 
-    if (*tbuff_index >= ps->tbuff.size) {
+    if (psval->tbuff_index >= psval->ps.tbuff.size) {
         return NULL;
     }
 
-    const hcjson_token_str *tstr = &ps->tbuff.tokens[*tbuff_index];
+    psval->recc_count++;
+    if (psval->recc_count > HCJSON_RECC_LIMIT) {
+        return NULL;
+    }
+
+    const hcjson_token_str *tstr = &psval->ps.tbuff.tokens[psval->tbuff_index];
 
     switch (tstr->token) {
         case HCJSON_TOKEN_LBRACE: {
-            return hcjson__parse_object(ps, tbuff_index);
+            return hcjson__parse_object(psval);
         }
         case HCJSON_TOKEN_LBRACKET: {
-            return hcjson__parse_array(ps, tbuff_index);
+            return hcjson__parse_array(psval);
         }
         case HCJSON_TOKEN_TRUE: {
             return hcjson_create_true();
@@ -1152,8 +1167,13 @@ hcjson *hcjson_parse(const char* json) {
     hcjson__lex_json(&ps);
 
     // parse json tokens
-    size_t tbuff_index = 0;
-    hcjson *json_item = hcjson__parse_item(&ps, &tbuff_index);
+    hcjson_parse_val parse_vals = {
+        .ps = ps,
+        .tbuff_index = 0,
+        .recc_count = 0,
+    };
+
+    hcjson *json_item = hcjson__parse_item(&parse_vals);
 
     hcjson__free(ps.tbuff.tokens);
 
