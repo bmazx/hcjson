@@ -75,7 +75,7 @@ hcjson *num = hcjson_create_number(124);
 hcjson_add_item_to_object(json, "key1", num); // add num to json
 hcjson_add_item_to_object(json, "key2", num); // not allowed: adding the same num hcjson reference to json again
 ```
-this would result in `hcjson_add_item_to_object` to return `HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED` and hcjson will not add num again to the struct.
+this would result in `hcjson_add_item_to_object` to return `HCJSON_ERROR_ITEM_ALREADY_TRANSFERRED` and hcjson will not add num to the struct again.
 
 If you need to add items with duplicate values, use:
 ```c
